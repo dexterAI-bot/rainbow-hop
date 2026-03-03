@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="he">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>קפוץ קשת</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Alef:wght@400;600&display=swap');
+    :root {
+      color-scheme: light;
+    }
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: 'Alef', system-ui, sans-serif;
+      background: radial-gradient(circle at top, #ffe27f 0%, #f79cb9 35%, #8bb4ff 100%);
+      color: #1f1b33;
+      display: flex;
+      justify-content: center;
+      align-items: stretch;
+      padding: 0 8px 32px;
+    }
+    .app-shell {
+      width: min(600px, 100%);
+      margin: auto;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    header h1 {
+      margin: 12px 0 4px;
+      font-size: clamp(2.2rem, 5vw, 3rem);
+      letter-spacing: 0.04em;
+    }
+    header p {
+      margin: 0;
+      font-size: 1rem;
+    }
+    #stats {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 1.1rem;
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.85);
+      box-shadow: 0 10px 20px rgba(31,27,51,0.18);
+    }
+    #stats span {
+      display: inline-flex;
+      gap: 6px;
+      align-items: center;
+    }
+    #playerCanvas {
+      width: 100%;
+      border-radius: 28px;
+      background: linear-gradient(180deg,#f7f8ff,#dbe6ff 55%,#f3e8ff 100%);
+      box-shadow: inset 0 -6px 20px rgba(31,27,51,0.25),0 20px 40px rgba(31,27,51,0.25);
+      touch-action: manipulation;
+    }
+    .controls {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 10px;
+    }
+    button {
+      border: none;
+      border-radius: 18px;
+      padding: 12px 18px;
+      font-size: 1rem;
+      font-weight: 600;
+      background: #1f1b33;
+      color: #fff;
+      box-shadow: 0 8px 16px rgba(31,27,51,0.4);
+      cursor: pointer;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+    button:active {
+      transform: scale(0.98);
+    }
+    #message {
+      font-size: 1rem;
+      min-height: 1.2em;
+    }
+    #credits {
+      display: flex;
+      justify-content: center;
+      gap: 6px;
+      font-size: 0.85rem;
+      opacity: 0.8;
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header>
+      <h1>קפוץ קשת</h1>
+      <p>הקש על המסך כדי לקפוץ בין פלטפורמות צבעוניות ולתפוס כוכבים נוצצים!</p>
+    </header>
+    <div id="stats">
+      <span id="starCount">כוכבים: 0</span>
+      <span id="status">רגע, מוכן?</span>
+    </div>
+    <canvas id="playerCanvas"></canvas>
+    <div class="controls">
+      <button id="startBtn">התחל</button>
+      <button id="resetBtn">אפס</button>
+      <button id="muteBtn">השר</button>
+    </div>
+    <div id="message">הקש להתחיל והרוץ עם קשת בצבעים!</div>
+    <div id="credits">משחק קטן לילדים, נבנה בלילה כדי שסבתא תוכל לראות בבוקר</div>
+  </div>
+  <script>
+    const canvas = document.getElementById('playerCanvas');
+    const ctx = canvas.getContext('2d');
+    const starCountEl = document.getElementById('starCount');
+    const statusEl = document.getElementById('status');
+    const messageEl = document.getElementById('message');
+    const startBtn = document.getElementById('startBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const muteBtn = document.getElementById('muteBtn');
+
+    let width = 0;
+    let height = 0;
+    let running = false;
+    let stars = 0;
+    let messageAtRest = 'הקש קפיצה קטנה כדי להתחיל!';
+    let muted = false;
+    let animationId;
+
+    const gravity = 0.45;
+    const jumpPow = 11;
+    const scrollSpeed = 1.3;
+    const platforms = [];
+    const platformColors = ['#fbd72a', '#ff9f99', '#b7ffb8', '#ffc7ff', '#8bc9ff'];
+    const hero = {
+      radius: 26,
+      x: 0,
+      y: 0,
+      vy: 0,
+      onPlatform: true
+    };
+    let lastPlatformId = 0;
+
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const centerFreq = 520;
+
+    function playTone(freq, duration = 0.12, type = 'sine') {
+      if (muted) return;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = type;
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + duration);
+    }
+
+    function resumeAudio() {
+      if (audioCtx.state !== 'running') {
+        audioCtx.resume();
+      }
+      document.body.removeEventListener('pointerdown', resumeAudio);
+    }
+
+    document.body.addEventListener('pointerdown', resumeAudio, { once: true });
+
+    function resizeCanvas() {
+      width = canvas.clientWidth;
+      height = width * 1.25;
+      canvas.width = width * devicePixelRatio;
+      canvas.height = height * devicePixelRatio;
+      ctx.scale(devicePixelRatio, devicePixelRatio);
+      hero.x = width / 2;
+      if (!running) hero.y = height * 0.75;
+    }
+
+    function createPlatform(y) {
+      const w = 90 + Math.random() * 120;
+      const x = Math.random() * (width - w - 20) + 10;
+      return { x, y, w, h: 14, color: platformColors[Math.floor(Math.random() * platformColors.length)], id: ++lastPlatformId };
+    }
+
+    function refillPlatforms() {
+      platforms.length = 0;
+      const spacing = 120;
+      for (let i = 0; i < 6; i++) {
+        platforms.push(createPlatform(height - i * spacing));
+      }
+    }
+
+    function resetGame() {
+      cancelAnimationFrame(animationId);
+      running = false;
+      stars = 0;
+      hero.vy = 0;
+      hero.onPlatform = true;
+      hero.y = height * 0.75;
+      starCountEl.textContent = 'כוכבים: 0';
+      statusEl.textContent = 'מוכן לשמיים?';
+      messageEl.textContent = messageAtRest;
+      refillPlatforms();
+      draw();
+    }
+
+    function startGame() {
+      if (running) return;
+      running = true;
+      stars = 0;
+      hero.vy = 0;
+      hero.onPlatform = true;
+      hero.y = height * 0.75;
+      starCountEl.textContent = 'כוכבים: 0';
+      statusEl.textContent = 'רצים עם הקשת!';
+      messageEl.textContent = 'הקש כדי לקפוץ!';
+      refillPlatforms();
+      loop();
+    }
+
+    function update() {
+      if (!running) return;
+      hero.vy += gravity;
+      hero.y += hero.vy;
+      platforms.forEach(plat => {
+        plat.y += scrollSpeed;
+      });
+      if (hero.y + hero.radius > height) {
+        running = false;
+        messageEl.textContent = 'אופס, נפל! הקש כדי להתחיל מחדש.';
+        statusEl.textContent = 'המשחק נגמר';
+        playTone(180, 0.35, 'triangle');
+        return;
+      }
+      for (const plat of platforms) {
+        if (hero.vy > 0 && !hero.onPlatform) {
+          const contactY = hero.y + hero.radius;
+          if (contactY >= plat.y && contactY <= plat.y + hero.vy + 3 && hero.x >= plat.x - hero.radius && hero.x <= plat.x + plat.w + hero.radius) {
+            hero.y = plat.y - hero.radius;
+            hero.vy = 0;
+            hero.onPlatform = true;
+            stars += 1;
+            starCountEl.textContent = 'כוכבים: ' + stars;
+            messageEl.textContent = 'איזה קפיצה יפה! כוכב חדש!';
+            playTone(540, 0.14, 'triangle');
+            break;
+          }
+        }
+      }
+      if (platforms[platforms.length - 1].y > height) {
+        platforms.shift();
+        platforms.push(createPlatform(platforms[platforms.length - 1].y - 130));
+      }
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, width, height);
+      ctx.save();
+      ctx.fillStyle = 'rgba(255,255,255,0.45)';
+      ctx.fillRect(0, 0, width, height);
+      ctx.restore();
+      ctx.strokeStyle = 'rgba(31,27,51,0.12)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([6, 8]);
+      for (let y = 0; y < height; y += 80) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
+      platforms.forEach(plat => {
+        ctx.fillStyle = plat.color;
+        ctx.shadowColor = plat.color;
+        ctx.shadowBlur = 15;
+        ctx.beginPath();
+        ctx.moveTo(plat.x, plat.y);
+        ctx.lineTo(plat.x + plat.w, plat.y);
+        ctx.lineTo(plat.x + plat.w + 12, plat.y + plat.h);
+        ctx.lineTo(plat.x - 12, plat.y + plat.h);
+        ctx.closePath();
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      });
+      ctx.fillStyle = '#fffbf3';
+      ctx.beginPath();
+      ctx.shadowColor = '#fbe1ff';
+      ctx.shadowBlur = 20;
+      ctx.arc(hero.x, hero.y, hero.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#1f1b33';
+      ctx.font = 'bold 24px Alef, system-ui';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('🎀', hero.x, hero.y);
+      ctx.shadowBlur = 0;
+    }
+
+    function loop() {
+      update();
+      draw();
+      if (running) animationId = requestAnimationFrame(loop);
+    }
+
+    function hop() {
+      if (!running) {
+        startGame();
+        return;
+      }
+      if (!hero.onPlatform) return;
+      hero.vy = -jumpPow;
+      hero.onPlatform = false;
+      playTone(420, 0.14, 'sine');
+      messageEl.textContent = 'וואו! שמתי פעמיים בגובה';
+    }
+
+    canvas.addEventListener('pointerdown', () => {
+      hop();
+    });
+
+    startBtn.addEventListener('click', () => {
+      startGame();
+    });
+    resetBtn.addEventListener('click', () => {
+      resetGame();
+    });
+    muteBtn.addEventListener('click', () => {
+      muted = !muted;
+      muteBtn.textContent = muted ? 'הפעל קול' : 'הסר קול';
+    });
+
+    window.addEventListener('resize', () => {
+      resizeCanvas();
+      draw();
+    });
+
+    resizeCanvas();
+    refillPlatforms();
+    draw();
+  </script>
+</body>
+</html>
