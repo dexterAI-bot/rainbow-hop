@@ -144,9 +144,9 @@
     let muted = false;
     let animationId;
 
-    const gravity = 0.38;
-    const jumpPow = 19;
-    const scrollSpeed = 1.0;
+    const gravity = 0.36;
+    const jumpPow = 23;
+    const scrollSpeed = 0.95;
     const platforms = [];
     const platformColors = ['#fbd72a', '#ff9f99', '#b7ffb8', '#ffc7ff', '#8bc9ff'];
     const hero = {
@@ -228,9 +228,16 @@
 
     function refillPlatforms() {
       platforms.length = 0;
-      const spacing = 96;
-      for (let i = 0; i < 8; i++) {
-        platforms.push(createPlatform(height - i * spacing));
+      const spacing = 84;
+
+      // Ensure the first platform is always reachable at start.
+      const startY = height * 0.82;
+      const base = createPlatform(startY);
+      base.x = Math.max(10, Math.min(width - base.w - 10, hero.x - base.w / 2));
+      platforms.push(base);
+
+      for (let i = 1; i < 10; i++) {
+        platforms.push(createPlatform(startY - i * spacing));
       }
     }
 
@@ -259,6 +266,12 @@
       statusEl.textContent = 'רצים עם הקשת!';
       messageEl.textContent = 'הקש כדי לקפוץ!';
       refillPlatforms();
+
+      // Snap hero onto the starting platform.
+      const startPlat = platforms[0];
+      hero.y = startPlat.y - hero.radius;
+      hero.onPlatform = true;
+
       loop();
     }
 
@@ -310,7 +323,7 @@
       if (platforms.length && platforms[0].y > height) {
         platforms.shift();
         const topY = Math.min(...platforms.map(p => p.y));
-        platforms.push(createPlatform(topY - 110));
+        platforms.push(createPlatform(topY - 100));
       }
     }
 
@@ -366,6 +379,11 @@
     function hop() {
       if (!running) {
         startGame();
+        // first tap should also jump
+        hero.vy = -jumpPow;
+        hero.onPlatform = false;
+        playTone(420, 0.14, 'sine');
+        messageEl.textContent = 'קפיצה!';
         return;
       }
       if (!hero.onPlatform) return;
