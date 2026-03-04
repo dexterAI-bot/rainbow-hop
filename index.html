@@ -127,7 +127,7 @@
     <div id="credits">משחק קטן לילדים, נבנה בלילה כדי שסבתא תוכל לראות בבוקר • <span id="ver"></span></div>
   </div>
   <script>
-    const BUILD = 'e9a499d';
+    const BUILD = 'jump-tune-1';
     const canvas = document.getElementById('playerCanvas');
     const ctx = canvas.getContext('2d');
     const starCountEl = document.getElementById('starCount');
@@ -145,9 +145,9 @@
     let muted = false;
     let animationId;
 
-    const gravity = 0.36;
-    const jumpPow = 23;
-    const scrollSpeed = 0.95;
+    const gravity = 0.40;
+    const jumpPow = 20;
+    const scrollSpeed = 0.98;
     const platforms = [];
     const platformColors = ['#fbd72a', '#ff9f99', '#b7ffb8', '#ffc7ff', '#8bc9ff'];
     const hero = {
@@ -229,7 +229,7 @@
 
     function refillPlatforms() {
       platforms.length = 0;
-      const spacing = 84;
+      const spacing = 92;
 
       // Ensure the first platform is always reachable at start.
       const startY = height * 0.82;
@@ -324,7 +324,7 @@
       if (platforms.length && platforms[0].y > height) {
         platforms.shift();
         const topY = Math.min(...platforms.map(p => p.y));
-        platforms.push(createPlatform(topY - 100));
+        platforms.push(createPlatform(topY - 110));
       }
     }
 
