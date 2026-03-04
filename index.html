@@ -50,25 +50,51 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      font-size: 1.1rem;
+      font-size: 1.05rem;
       padding: 6px 12px;
       border-radius: 999px;
       background: rgba(255,255,255,0.85);
       box-shadow: 0 10px 20px rgba(31,27,51,0.18);
+      gap: 10px;
+      flex-wrap: wrap;
     }
     #stats span {
       display: inline-flex;
       gap: 6px;
       align-items: center;
+      white-space: nowrap;
     }
+    .canvas-wrap{position:relative;flex:1;min-height:320px}
     #playerCanvas {
       width: 100%;
+      height: 100%;
       border-radius: 28px;
       background: linear-gradient(180deg,#f7f8ff,#dbe6ff 55%,#f3e8ff 100%);
       box-shadow: inset 0 -6px 20px rgba(31,27,51,0.25),0 20px 40px rgba(31,27,51,0.25);
       touch-action: none;
       display: block;
     }
+    .overlay{
+      position:absolute;inset:0;
+      display:none;
+      align-items:center;justify-content:center;
+      background:rgba(15,12,34,0.55);
+      border-radius:28px;
+      padding:16px;
+    }
+    .overlay.show{display:flex}
+    .overlay-card{
+      width:min(92%,360px);
+      background:rgba(255,255,255,0.92);
+      border-radius:20px;
+      padding:14px;
+      box-shadow:0 18px 40px rgba(0,0,0,0.35);
+    }
+    .overlay-card h2{margin:0 0 6px}
+    .overlay-metrics{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:10px 0}
+    .metric{background:rgba(31,27,51,0.06);border-radius:14px;padding:10px}
+    .metric .t{font-size:0.85rem;opacity:0.8}
+    .metric .n{font-size:1.4rem;font-weight:700}
     .controls {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
@@ -115,9 +141,25 @@
     </header>
     <div id="stats">
       <span id="starCount">כוכבים: 0</span>
+      <span id="bestLabel">שיא: 0</span>
       <span id="status">רגע, מוכן?</span>
     </div>
-    <canvas id="playerCanvas"></canvas>
+    <div class="canvas-wrap">
+      <canvas id="playerCanvas"></canvas>
+      <div id="gameOver" class="overlay" role="dialog" aria-modal="true">
+        <div class="overlay-card">
+          <h2>המשחק נגמר</h2>
+          <div class="overlay-metrics">
+            <div class="metric"><div class="t">כוכבים</div><div id="finalStars" class="n">0</div></div>
+            <div class="metric"><div class="t">שיא</div><div id="finalBest" class="n">0</div></div>
+          </div>
+          <div class="row" style="justify-content:center">
+            <button id="playAgainBtn">שחק שוב</button>
+          </div>
+          <div style="margin-top:8px;font-size:0.9rem;opacity:0.85">טיפ: גרור על המסך כדי לזוז לצדדים תוך כדי קפיצה.</div>
+        </div>
+      </div>
+    </div>
     <div class="controls">
       <button id="startBtn">התחל</button>
       <button id="resetBtn">אפס</button>
@@ -127,23 +169,31 @@
     <div id="credits">משחק קטן לילדים, נבנה בלילה כדי שסבתא תוכל לראות בבוקר • <span id="ver"></span></div>
   </div>
   <script>
-    const BUILD = 'jump-tune-3';
+    const BUILD = 'controls-gameover-v1';
     const canvas = document.getElementById('playerCanvas');
     const ctx = canvas.getContext('2d');
     const starCountEl = document.getElementById('starCount');
+    const bestLabelEl = document.getElementById('bestLabel');
     const statusEl = document.getElementById('status');
     const messageEl = document.getElementById('message');
     const startBtn = document.getElementById('startBtn');
     const resetBtn = document.getElementById('resetBtn');
     const muteBtn = document.getElementById('muteBtn');
+    const overlayEl = document.getElementById('gameOver');
+    const finalStarsEl = document.getElementById('finalStars');
+    const finalBestEl = document.getElementById('finalBest');
+    const playAgainBtn = document.getElementById('playAgainBtn');
 
     let width = 0;
     let height = 0;
-    let running = false;
+    let gameState = 'idle'; // idle | running | gameover
     let stars = 0;
+    let best = Number(localStorage.getItem('rainbowhop-best') || '0');
     let messageAtRest = 'הקש קפיצה קטנה כדי להתחיל!';
     let muted = false;
     let animationId;
+
+    bestLabelEl.textContent = 'שיא: ' + best;
 
     const gravity = 0.60;
     const jumpPow = 12.5;
@@ -156,7 +206,9 @@
       xTarget: 0,
       y: 0,
       vy: 0,
-      onPlatform: true
+      vx: 0,
+      onPlatform: true,
+      currentPlatformId: null,
     };
     let lastPlatformId = 0;
 
@@ -218,7 +270,7 @@
 
       hero.x = width / 2;
       hero.xTarget = hero.x;
-      if (!running) hero.y = height * 0.75;
+      if (gameState !== 'running') hero.y = height * 0.75;
     }
 
     function createPlatform(y) {
@@ -242,49 +294,89 @@
       }
     }
 
+    function showGameOver() {
+      overlayEl.classList.add('show');
+      overlayEl.setAttribute('aria-hidden', 'false');
+      finalStarsEl.textContent = String(stars);
+      finalBestEl.textContent = String(best);
+    }
+
+    function hideGameOver() {
+      overlayEl.classList.remove('show');
+      overlayEl.setAttribute('aria-hidden', 'true');
+    }
+
     function resetGame() {
       cancelAnimationFrame(animationId);
-      running = false;
+      gameState = 'idle';
       stars = 0;
       hero.vy = 0;
+      hero.vx = 0;
       hero.onPlatform = true;
+      hero.currentPlatformId = null;
       hero.y = height * 0.75;
       starCountEl.textContent = 'כוכבים: 0';
       statusEl.textContent = 'מוכן לשמיים?';
       messageEl.textContent = messageAtRest;
+      hideGameOver();
       refillPlatforms();
       draw();
     }
 
     function startGame() {
-      if (running) return;
-      running = true;
+      if (gameState === 'running') return;
+      gameState = 'running';
       stars = 0;
       hero.vy = 0;
+      hero.vx = 0;
       hero.onPlatform = true;
+      hero.currentPlatformId = null;
       hero.y = height * 0.75;
       starCountEl.textContent = 'כוכבים: 0';
       statusEl.textContent = 'רצים עם הקשת!';
-      messageEl.textContent = 'הקש כדי לקפוץ!';
+      messageEl.textContent = 'טאפ = קפיצה · גרור = זוז';
+      hideGameOver();
       refillPlatforms();
 
       // Snap hero onto the starting platform.
       const startPlat = platforms[0];
       hero.y = startPlat.y - hero.radius;
       hero.onPlatform = true;
+      hero.currentPlatformId = startPlat.id;
 
       loop();
     }
 
     function update() {
-      if (!running) return;
+      if (gameState !== 'running') return;
 
-      // Move sideways smoothly toward target.
-      hero.x += (hero.xTarget - hero.x) * 0.25;
+      // Horizontal movement (supports diagonal jumps): use a velocity that tracks xTarget.
+      const dx = hero.xTarget - hero.x;
+      hero.vx += dx * 0.02;
+      hero.vx *= 0.86;
+      hero.vx = Math.max(-8, Math.min(8, hero.vx));
+      hero.x += hero.vx;
       hero.x = Math.max(hero.radius, Math.min(width - hero.radius, hero.x));
 
-      // Assume airborne unless we snap onto a platform this frame.
-      hero.onPlatform = false;
+      // Keep platform lock if we're still standing on the same one.
+      if (hero.onPlatform && hero.currentPlatformId) {
+        const p = platforms.find(pp => pp.id === hero.currentPlatformId);
+        if (p) {
+          const contactY = hero.y + hero.radius;
+          const withinX = hero.x >= p.x - hero.radius && hero.x <= p.x + p.w + hero.radius;
+          const closeY = Math.abs(contactY - p.y) <= 6;
+          if (withinX && closeY) {
+            hero.y = p.y - hero.radius;
+            hero.vy = 0;
+          } else {
+            hero.onPlatform = false;
+            hero.currentPlatformId = null;
+          }
+        } else {
+          hero.onPlatform = false;
+          hero.currentPlatformId = null;
+        }
+      }
 
       hero.vy += gravity;
       hero.y += hero.vy;
@@ -294,23 +386,30 @@
       });
 
       if (hero.y + hero.radius > height) {
-        running = false;
-        messageEl.textContent = 'אופס, נפל! הקש כדי להתחיל מחדש.';
+        gameState = 'gameover';
+        messageEl.textContent = 'אופס, נפל!';
         statusEl.textContent = 'המשחק נגמר';
         playTone(180, 0.35, 'triangle');
+
+        best = Math.max(best, stars);
+        localStorage.setItem('rainbowhop-best', String(best));
+        bestLabelEl.textContent = 'שיא: ' + best;
+
+        showGameOver();
         return;
       }
 
       // Land on the first platform we intersect while falling.
-      if (hero.vy >= 0) {
+      if (hero.vy >= 0 && !hero.onPlatform) {
         const contactY = hero.y + hero.radius;
         for (const plat of platforms) {
           const withinX = hero.x >= plat.x - hero.radius && hero.x <= plat.x + plat.w + hero.radius;
-          const crossedTop = contactY >= plat.y && contactY <= plat.y + hero.vy + 6;
+          const crossedTop = contactY >= plat.y && contactY <= plat.y + hero.vy + 8;
           if (withinX && crossedTop) {
             hero.y = plat.y - hero.radius;
             hero.vy = 0;
             hero.onPlatform = true;
+            hero.currentPlatformId = plat.id;
             stars += 1;
             starCountEl.textContent = 'כוכבים: ' + stars;
             messageEl.textContent = 'איזה קפיצה יפה! כוכב חדש!';
@@ -374,15 +473,20 @@
     function loop() {
       update();
       draw();
-      if (running) animationId = requestAnimationFrame(loop);
+      if (gameState === 'running') animationId = requestAnimationFrame(loop);
     }
 
     function hop() {
-      if (!running) {
+      if (gameState === 'gameover') {
+        // don’t auto-restart on tap; use the Game Over button.
+        return;
+      }
+      if (gameState !== 'running') {
         startGame();
         // first tap should also jump
         hero.vy = -jumpPow;
         hero.onPlatform = false;
+        hero.currentPlatformId = null;
         playTone(420, 0.14, 'sine');
         messageEl.textContent = 'קפיצה!';
         return;
@@ -390,6 +494,7 @@
       if (!hero.onPlatform) return;
       hero.vy = -jumpPow;
       hero.onPlatform = false;
+      hero.currentPlatformId = null;
       playTone(420, 0.14, 'sine');
       messageEl.textContent = 'קפיצה!';
     }
@@ -408,13 +513,18 @@
     }, { passive: false });
 
     canvas.addEventListener('pointermove', (e) => {
-      if (!running) return;
+      if (gameState !== 'running') return;
       if (e.buttons === 0 && e.pointerType === 'mouse') return;
       setTargetFromEvent(e);
     });
 
     startBtn.addEventListener('click', () => {
       ensureAudio();
+      startGame();
+    });
+    playAgainBtn.addEventListener('click', () => {
+      ensureAudio();
+      resetGame();
       startGame();
     });
     resetBtn.addEventListener('click', () => {
@@ -435,6 +545,11 @@
       }
       hero.xTarget = Math.max(hero.radius, Math.min(width - hero.radius, hero.xTarget));
     });
+
+    // Prevent page scroll from touch moves while playing.
+    document.addEventListener('touchmove', (e) => {
+      if (gameState === 'running') e.preventDefault();
+    }, { passive: false });
 
     window.addEventListener('resize', () => {
       resizeCanvas();
