@@ -166,10 +166,9 @@
       <button id="muteBtn">הסר קול</button>
     </div>
     <div id="message">הקש להתחיל והרוץ עם קשת בצבעים!</div>
-    <div id="credits">משחק קטן לילדים, נבנה בלילה כדי שסבתא תוכל לראות בבוקר • <span id="ver"></span></div>
+    <div id="credits">משחק קטן לילדים — צבעים, קפיצות וכוכבים ✨</div>
   </div>
   <script>
-    const BUILD = 'controls-gameover-v1';
     const canvas = document.getElementById('playerCanvas');
     const ctx = canvas.getContext('2d');
     const starCountEl = document.getElementById('starCount');
@@ -555,8 +554,6 @@
       resizeCanvas();
       draw();
     });
-
-    document.getElementById('ver').textContent = `build ${BUILD}`;
 
     resizeCanvas();
     refillPlatforms();
