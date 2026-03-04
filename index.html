@@ -179,10 +179,17 @@
 
     function resizeCanvas() {
       width = canvas.clientWidth;
-      height = width * 1.25;
-      canvas.width = width * devicePixelRatio;
-      canvas.height = height * devicePixelRatio;
+      // Fit better on phones: cap by viewport height.
+      const target = width * 1.25;
+      const maxByViewport = Math.max(360, Math.min(window.innerHeight * 0.62, 760));
+      height = Math.min(target, maxByViewport);
+
+      canvas.width = Math.floor(width * devicePixelRatio);
+      canvas.height = Math.floor(height * devicePixelRatio);
+      // Avoid cumulative scaling on resize.
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.scale(devicePixelRatio, devicePixelRatio);
+
       hero.x = width / 2;
       if (!running) hero.y = height * 0.75;
     }
@@ -231,11 +238,17 @@
 
     function update() {
       if (!running) return;
+
+      // Assume airborne unless we snap onto a platform this frame.
+      hero.onPlatform = false;
+
       hero.vy += gravity;
       hero.y += hero.vy;
+
       platforms.forEach(plat => {
         plat.y += scrollSpeed;
       });
+
       if (hero.y + hero.radius > height) {
         running = false;
         messageEl.textContent = 'אופס, נפל! הקש כדי להתחיל מחדש.';
@@ -243,10 +256,14 @@
         playTone(180, 0.35, 'triangle');
         return;
       }
-      for (const plat of platforms) {
-        if (hero.vy > 0 && !hero.onPlatform) {
-          const contactY = hero.y + hero.radius;
-          if (contactY >= plat.y && contactY <= plat.y + hero.vy + 3 && hero.x >= plat.x - hero.radius && hero.x <= plat.x + plat.w + hero.radius) {
+
+      // Land on the first platform we intersect while falling.
+      if (hero.vy >= 0) {
+        const contactY = hero.y + hero.radius;
+        for (const plat of platforms) {
+          const withinX = hero.x >= plat.x - hero.radius && hero.x <= plat.x + plat.w + hero.radius;
+          const crossedTop = contactY >= plat.y && contactY <= plat.y + hero.vy + 6;
+          if (withinX && crossedTop) {
             hero.y = plat.y - hero.radius;
             hero.vy = 0;
             hero.onPlatform = true;
@@ -258,9 +275,12 @@
           }
         }
       }
-      if (platforms[platforms.length - 1].y > height) {
+
+      // Recycle the bottom platform once it leaves the screen.
+      if (platforms.length && platforms[0].y > height) {
         platforms.shift();
-        platforms.push(createPlatform(platforms[platforms.length - 1].y - 130));
+        const topY = Math.min(...platforms.map(p => p.y));
+        platforms.push(createPlatform(topY - 130));
       }
     }
 
@@ -322,7 +342,7 @@
       hero.vy = -jumpPow;
       hero.onPlatform = false;
       playTone(420, 0.14, 'sine');
-      messageEl.textContent = 'וואו! שמתי פעמיים בגובה';
+      messageEl.textContent = 'קפיצה!';
     }
 
     canvas.addEventListener('pointerdown', () => {
