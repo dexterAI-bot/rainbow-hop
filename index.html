@@ -144,9 +144,9 @@
     let muted = false;
     let animationId;
 
-    const gravity = 0.42;
-    const jumpPow = 15;
-    const scrollSpeed = 1.1;
+    const gravity = 0.38;
+    const jumpPow = 19;
+    const scrollSpeed = 1.0;
     const platforms = [];
     const platformColors = ['#fbd72a', '#ff9f99', '#b7ffb8', '#ffc7ff', '#8bc9ff'];
     const hero = {
@@ -228,8 +228,8 @@
 
     function refillPlatforms() {
       platforms.length = 0;
-      const spacing = 108;
-      for (let i = 0; i < 7; i++) {
+      const spacing = 96;
+      for (let i = 0; i < 8; i++) {
         platforms.push(createPlatform(height - i * spacing));
       }
     }
@@ -310,7 +310,7 @@
       if (platforms.length && platforms[0].y > height) {
         platforms.shift();
         const topY = Math.min(...platforms.map(p => p.y));
-        platforms.push(createPlatform(topY - 120));
+        platforms.push(createPlatform(topY - 110));
       }
     }
 
